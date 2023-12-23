@@ -1,0 +1,9 @@
+{
+  "editor.formatOnSave": true,
+  "python.formatting.provider": "prettier",
+  "python.formatting.prettierPath": "ruff",
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "[python]": {
+    "editor.formatOnSave": true
+  }
+}

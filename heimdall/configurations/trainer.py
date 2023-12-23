@@ -2,6 +2,7 @@ import os
 
 from heimdall.abstracts.dataschemes import BaseDataClass
 
+
 class TrainerConfig(BaseDataClass):
     precision: str
     model_checkpoint_name: str
