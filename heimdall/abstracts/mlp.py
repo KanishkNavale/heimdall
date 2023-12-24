@@ -1,7 +1,7 @@
-from abc import abstractmethod, ABC
+from abc import ABC, abstractmethod
 
-import torch
 import pytorch_lightning as pl
+import torch
 
 
 class MLP(pl.LightningModule, ABC):

@@ -1,6 +1,6 @@
-from setuptools import setup, find_packages
-
 import re
+
+from setuptools import find_packages, setup
 
 
 def get_version() -> str:

@@ -5,13 +5,13 @@ from heimdall.abstracts.dataschemes import BaseDataClass
 
 class TrainerConfig(BaseDataClass):
     precision: str
-    model_checkpoint_name: str
+    models_checkpoint_name: str
     epochs: int
     enable_logging: bool
     tensorboard_path: bool
     training_directory: str
     enable_checkpointing: bool
-    model_path: str
+    models_path: str
     logging_frequency: bool
     validation_frequency: int
 

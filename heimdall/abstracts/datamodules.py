@@ -1,8 +1,8 @@
-from typing import Dict, Any
-from abc import abstractmethod, ABC
+from abc import ABC, abstractmethod
+from typing import Any, Dict
 
-from torch.utils.data import Dataset
 import pytorch_lightning as pl
+from torch.utils.data import Dataset
 
 
 class Dataset(Dataset, ABC):

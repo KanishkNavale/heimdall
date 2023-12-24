@@ -1,17 +1,17 @@
-from abc import abstractmethod, ABC, abstractproperty
+from abc import ABC, abstractmethod, abstractproperty
 from typing import Optional
 
-import torch
 import pytorch_lightning as pl
+import torch
 from pytorch_lightning.callbacks import (
+    LearningRateMonitor,
     ModelCheckpoint,
     RichProgressBar,
-    LearningRateMonitor,
 )
 from pytorch_lightning.loggers import TensorBoardLogger
 
-from heimdall.abstracts.mlp import MLP
 from heimdall.abstracts.datamodules import DataModule
+from heimdall.abstracts.mlp import MLP
 from heimdall.configurations.trainer import TrainerConfig
 
 
@@ -41,7 +41,7 @@ class Trainer(ABC):
         if self.config.enable_logging:
             return TensorBoardLogger(
                 save_dir=self.config.tensorboard_path,
-                name=self.config.model_checkpoint_name,
+                name=self.config.models_checkpoint_name,
             )
         else:
             return None
@@ -49,8 +49,8 @@ class Trainer(ABC):
     def model_checkpoints(self) -> ModelCheckpoint:
         return ModelCheckpoint(
             monitor="val_loss",
-            filename=self.config.model_checkpoint_name,
-            dirpath=self.config.model_path,
+            filename=self.config.models_checkpoint_name,
+            dirpath=self.config.models_path,
             mode="min",
             save_top_k=1,
             verbose=True,
