@@ -1,7 +1,5 @@
 import torch
 from kornia.geometry.depth import warp_frame_depth
-from src.configuration import DepthCompletionMLPConfig
-from src.utils import initialize_config_file
 
 
 class DepthCompletionLoss:
