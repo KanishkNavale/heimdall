@@ -1,5 +1,10 @@
 import torch
 
+from heimdall.embeddings.position_embedder import (
+    PositionalEmbedder1D,
+    PositionalEmbedder2D,
+)
+
 
 class PatchEmbedder(torch.nn.Module):
     def __init__(
@@ -20,10 +25,20 @@ class PatchEmbedder(torch.nn.Module):
             stride=patch_size,
         )
 
+        if self.flat_dispatch:
+            self.position_embedder = PositionalEmbedder1D(
+                d_model=out_channels, max_len=2000
+            )
+        else:
+            self.position_embedder = PositionalEmbedder2D(d_model=out_channels)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        features = self.conv(x)
-        return (
-            features.flatten(2).transpose(1, 2)
-            if self.flat_dispatch
-            else features.permute(0, 2, 3, 1)
-        )
+        x = self.conv(x)
+
+        if self.flat_dispatch:
+            x = x.flatten(-2, -1)
+            pos_embeddings = self.position_embedder(x.permute(0, 2, 1))
+            return x + pos_embeddings.permute(0, 2, 1)
+        else:
+            pos_embeddings = self.position_embedder(x.permute(0, 2, 3, 1))
+            return x + pos_embeddings.permute(0, 3, 1, 2)
