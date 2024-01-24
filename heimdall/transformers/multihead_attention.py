@@ -13,8 +13,7 @@ class MultiHeadAttention(torch.nn.Module):
         input_dim: int,
         head_dim: int,
         n_head: int,
-        attention_scale: float = 1.0,
-        attention_method: str = "scaled_dot_product",
+        attention_method: str = "fast_dot_product",
     ):
         super(MultiHeadAttention, self).__init__()
 
@@ -28,9 +27,9 @@ class MultiHeadAttention(torch.nn.Module):
 
         self.dispatcher = torch.nn.Linear(head_dim * n_head, input_dim)
 
-        self.attention_scale = attention_scale
         attention_directory = {
             "scaled_dot_product": self.scaled_dot_product_attention,
+            "fast_dot_product": self.fast_dot_product_attention,
         }
 
         self.attention_method = attention_directory.get(attention_method, None)
@@ -53,12 +52,21 @@ class MultiHeadAttention(torch.nn.Module):
         torch.nn.init.zeros_(self.K.bias)
         torch.nn.init.zeros_(self.V.bias)
 
-    def scaled_dot_product_attention(
-        self, Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor
+    @staticmethod
+    def fast_dot_product_attention(
+        Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor
     ) -> torch.Tensor:
-        attention_weights = torch.matmul(Q, K.transpose(-1, -2)) / math.sqrt(
-            Q.size(-1) ** self.attention_scale
+        return torch.nn.functional.scaled_dot_product_attention(
+            Q,
+            K,
+            V,
         )
+
+    @staticmethod
+    def scaled_dot_product_attention(
+        Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor
+    ) -> torch.Tensor:
+        attention_weights = torch.matmul(Q, K.transpose(-1, -2)) / math.sqrt(Q.size(-1))
         return torch.matmul(attention_weights, V)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
