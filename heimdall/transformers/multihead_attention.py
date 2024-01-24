@@ -1,10 +1,42 @@
 import math
+from typing import Callable
 
 import torch
 
-# TODO:
-# 1. Add support for different attention methods:  Additive Attention, etc.
-# 2. Add support for dropout mechanisms: Head, Attention, etc.
+
+class AttentionRegistry:
+    def __init__(self) -> None:
+        self.registry = {
+            "scaled_dot_product": self.scaled_dot_product_attention,
+            "fast_dot_product": self.fast_dot_product_attention,
+        }
+
+    @staticmethod
+    def fast_dot_product_attention(
+        Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor
+    ) -> torch.Tensor:
+        return torch.nn.functional.scaled_dot_product_attention(
+            Q,
+            K,
+            V,
+        )
+
+    @staticmethod
+    def scaled_dot_product_attention(
+        Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor
+    ) -> torch.Tensor:
+        attention_weights = torch.matmul(Q, K.transpose(-1, -2)) / math.sqrt(Q.size(-1))
+        return torch.matmul(attention_weights, V)
+
+    def get(self, attention_method: str) -> Callable:
+        fetched_method = self.registry.get(attention_method, None)
+
+        if fetched_method is None:
+            raise ValueError(
+                f"{attention_method} is not a valid attention method. Please choose from {list(self.registry.keys())}"
+            )
+
+        return fetched_method
 
 
 class MultiHeadAttention(torch.nn.Module):
@@ -27,16 +59,8 @@ class MultiHeadAttention(torch.nn.Module):
 
         self.dispatcher = torch.nn.Linear(head_dim * n_head, input_dim)
 
-        attention_directory = {
-            "scaled_dot_product": self.scaled_dot_product_attention,
-            "fast_dot_product": self.fast_dot_product_attention,
-        }
-
-        self.attention_method = attention_directory.get(attention_method, None)
-        if self.attention_method is None:
-            raise ValueError(
-                f"{attention_method} is not a valid attention method. Please choose from {list(attention_directory.keys())}"
-            )
+        attention_registry = AttentionRegistry()
+        self.attention_method = attention_registry.get(attention_method)
 
         # Initialize heads
         self._init_weights()
@@ -51,23 +75,6 @@ class MultiHeadAttention(torch.nn.Module):
         torch.nn.init.zeros_(self.Q.bias)
         torch.nn.init.zeros_(self.K.bias)
         torch.nn.init.zeros_(self.V.bias)
-
-    @staticmethod
-    def fast_dot_product_attention(
-        Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor
-    ) -> torch.Tensor:
-        return torch.nn.functional.scaled_dot_product_attention(
-            Q,
-            K,
-            V,
-        )
-
-    @staticmethod
-    def scaled_dot_product_attention(
-        Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor
-    ) -> torch.Tensor:
-        attention_weights = torch.matmul(Q, K.transpose(-1, -2)) / math.sqrt(Q.size(-1))
-        return torch.matmul(attention_weights, V)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, L, _ = x.size()
