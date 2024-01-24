@@ -9,6 +9,8 @@ class AttentionRegistry:
         self.registry = {
             "scaled_dot_product": self.scaled_dot_product_attention,
             "fast_dot_product": self.fast_dot_product_attention,
+            "relative_dot_product": self.relative_dot_product_attention,
+            "skip_relative_dot_product": self.skipped_relative_dot_product_attention,
         }
 
     @staticmethod
@@ -25,8 +27,29 @@ class AttentionRegistry:
     def scaled_dot_product_attention(
         Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor
     ) -> torch.Tensor:
-        attention_weights = torch.matmul(Q, K.transpose(-1, -2)) / math.sqrt(Q.size(-1))
-        return torch.matmul(attention_weights, V)
+        attention_logits = torch.matmul(Q, K.transpose(-1, -2)) / math.sqrt(Q.size(-1))
+        attention = torch.nn.functional.softmax(attention_logits, dim=-1)
+        return torch.matmul(attention, V)
+
+    @staticmethod
+    def relative_dot_product_attention(
+        Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor, R: torch.Tensor
+    ) -> torch.Tensor:
+        attention_logits = (
+            torch.matmul(Q, K.transpose(-1, -2)) + torch.matmul(Q, R.transpose(-1, -2))
+        ) / math.sqrt(Q.size(-1))
+        attention = torch.nn.functional.softmax(attention_logits, dim=-1)
+        return torch.matmul(attention, V)
+
+    @staticmethod
+    def skipped_relative_dot_product_attention(
+        Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor, R: torch.Tensor
+    ) -> torch.Tensor:
+        attention_logits = (
+            torch.matmul(Q, K.transpose(-1, -2)) + torch.matmul(Q, R.transpose(-1, -2))
+        ) / math.sqrt(Q.size(-1))
+        attention = torch.nn.functional.softmax(attention_logits, dim=-1)
+        return torch.matmul(attention, V) + Q
 
     def get(self, attention_method: str) -> Callable:
         fetched_method = self.registry.get(attention_method, None)
@@ -62,6 +85,9 @@ class MultiHeadAttention(torch.nn.Module):
         attention_registry = AttentionRegistry()
         self.attention_method = attention_registry.get(attention_method)
 
+        if "skip" in attention_method:
+            self.R = torch.nn.Linear(head_dim * n_head, head_dim * n_head)
+
         # Initialize heads
         self._init_weights()
         self._init_bias()
@@ -81,6 +107,7 @@ class MultiHeadAttention(torch.nn.Module):
 
         # X[B: Batch Size, L: Sequence Length, D: Embedding Dim.] -> Q|K|V[B, L, N: No. of Heads * H:]
         Q = self.Q(x)
+        copy_Q = Q.copy()
         K = self.K(x)
         V = self.V(x)
 
@@ -90,7 +117,12 @@ class MultiHeadAttention(torch.nn.Module):
         V = V.view(B, L, self.n_head, self.head_dim).transpose(1, 2)
 
         # Compute Attention: Q|K|V[B, N, L, H] -> Attention[B, N, L, H]
-        attention = self.attention_method(Q, K, V)
+        if hasattr(self, "R"):
+            R = self.R(copy_Q)
+            R = R.view(B, L, self.n_head, self.head_dim).transpose(1, 2)
+            attention = self.attention_method(Q, K, V, R)
+        else:
+            attention = self.attention_method(Q, K, V)
 
         # Concatenate heads: [B, N, L, H] -> [B, L, N * H]
         stacked_attention = attention.transpose(1, 2).contiguous().view(B, L, -1)
