@@ -21,6 +21,7 @@ Bound to a long term development. Below is the list of present contents:
         * Fast multi-head attention module
         * Encoder blocks
         * ViT
+        * MViT
 
     - Visual object generalization:
         * Dense Object Nets (DON)

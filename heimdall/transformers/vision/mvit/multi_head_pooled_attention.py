@@ -2,6 +2,8 @@ from typing import Optional, Tuple
 
 import torch
 
+from heimdall.embeddings.position_embedder import PositionalEmbedder2D
+
 
 class AttentionPooler(torch.nn.Module):
     def __init__(
@@ -27,7 +29,9 @@ class AttentionPooler(torch.nn.Module):
         )
         self.has_cls_token = has_cls_token
 
-    def forward(self, x: torch.Tensor, hw_shape: Tuple[int, int]) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, hw_shape: Tuple[int, int]
+    ) -> Tuple[torch.Tensor, Tuple[int, int]]:
         # Check shapes
         H, W = hw_shape
         B, N, _, C = x.shape
@@ -41,6 +45,7 @@ class AttentionPooler(torch.nn.Module):
 
         # Pooler: X[B * N, C, H, W] -> X[B * N, D, h, w], where h << H, w << W, C <= D
         pooled_features = self.pooler.forward(x)
+        hw_shape = (pooled_features.shape[-2], pooled_features.shape[-1])
 
         # Reshape: X[B * N, D, h, w] -> X[B, N, D, h, w]
         reshaped_pooled_features = pooled_features.reshape(
@@ -62,7 +67,7 @@ class AttentionPooler(torch.nn.Module):
                 [cls_tokens, flattened_pooled_features], dim=2
             )
 
-        return flattened_pooled_features
+        return flattened_pooled_features, hw_shape
 
 
 class MultiHeadPooledSelfAttention(torch.nn.Module):
@@ -84,9 +89,12 @@ class MultiHeadPooledSelfAttention(torch.nn.Module):
         self.K = torch.nn.Linear(input_dim, head_dim * n_head)
         self.V = torch.nn.Linear(input_dim, head_dim * n_head)
 
-        self.PQ = AttentionPooler(input_dim, head_dim * n_head, has_cls_token=False)
-        self.PK = AttentionPooler(input_dim, head_dim * n_head, has_cls_token=False)
-        self.PV = AttentionPooler(input_dim, head_dim * n_head, has_cls_token=False)
+        self.PQ = AttentionPooler(input_dim, head_dim, has_cls_token=has_cls_token)
+        self.PK = AttentionPooler(input_dim, head_dim, has_cls_token=has_cls_token)
+        self.PV = AttentionPooler(input_dim, head_dim, has_cls_token=has_cls_token)
+
+        # Rotary Embeddings instrad of Positional Embeddings
+        self.relative_pos_embedder = PositionalEmbedder2D(head_dim)
 
         self.dispatcher = torch.nn.Linear(head_dim * n_head, input_dim)
 
@@ -104,14 +112,35 @@ class MultiHeadPooledSelfAttention(torch.nn.Module):
         torch.nn.init.zeros_(self.K.bias)
         torch.nn.init.zeros_(self.V.bias)
 
-    def _compute_relative_positional_encoding(
+    def _add_relative_pos_encoding(
         self,
-        x: torch.Tensor,
+        k: torch.Tensor,
         hw_shape: Tuple[int, int],
     ) -> torch.Tensor:
-        pass
+        B, N, L, C = k.shape
+        h, w = hw_shape
 
-    def forward(self, x: torch.Tensor, hw_shape: Tuple[int, int]) -> torch.Tensor:
+        if self.has_cls_token:
+            cls_tokens = k[:, :, 0, :].unsqueeze(2)
+            k = k[:, :, 1:, :]
+
+        # Reshape: X[B, N, L, C] -> X[B * N, h, w, C]
+        k = k.reshape(B * N, h, w, C)
+
+        embeddings = self.relative_pos_embedder(k)
+        k = k + embeddings
+
+        # Reshape: X[B * N, h, w, C] -> X[B, N, L, C]
+        k = k.reshape(B, N, L - 1, C)
+
+        if self.has_cls_token:
+            embeddings = torch.concat([cls_tokens, k], dim=-2)
+
+        return embeddings
+
+    def forward(
+        self, x: torch.Tensor, hw_shape: Tuple[int, int]
+    ) -> Tuple[torch.Tensor, Tuple[int, int]]:
         B, L, _ = x.size()
 
         # X[B: Batch Size, L: Sequence Length, D: Embedding Dim.] -> Q|K|V[B, L, N: No. of Heads * H:]
@@ -125,9 +154,12 @@ class MultiHeadPooledSelfAttention(torch.nn.Module):
         V = V.view(B, L, self.n_head, self.head_dim).transpose(1, 2)
 
         # Pooled Features: Q|K|V[B, N, L, H] -> Pooled Features[B, N, l, h], where l <= L, h <= H
-        PQ = self.PQ.forward(Q, hw_shape)
-        PK = self.PK.forward(K, hw_shape)
-        PV = self.PV.forward(V, hw_shape)
+        PQ, pq_shape = self.PQ.forward(Q, hw_shape)
+        PK, _ = self.PK.forward(K, hw_shape)
+        PV, _ = self.PV.forward(V, hw_shape)
+
+        # Add Relative Positional Embeddings
+        PQ = self._add_relative_pos_encoding(PQ, pq_shape)
 
         # Compute Attention: PQ|PK|PV[B, N, l, h] -> Attention[B, N, l, h]
         attention_logits = torch.matmul(PQ, PK.transpose(-2, -1)) / (self.head_dim**0.5)
@@ -135,17 +167,15 @@ class MultiHeadPooledSelfAttention(torch.nn.Module):
         self_attention = torch.matmul(attention, PV)
 
         if self.has_cls_token:
-            skipped_attention = self_attention[:, :, 1:, :] + Q[:, :, 1:, :]
+            self_attention[:, :, 1:, :] += Q[:, :, 1:, :]
+            skipped_attention = self_attention
         else:
             skipped_attention = self_attention + Q
 
         # Concatenate heads: [B, N, l, h] -> [B, l, N * h]
         stacked_attention = (
-            skipped_attention.transpose(1, 2).contiguous().view(B, L, -1)
+            skipped_attention.transpose(2, 1).contiguous().view(B, L, -1)
         )
 
         # Project: [B, l, N * h] -> [B, l, D]
-        return self.dispatcher(stacked_attention)
-
-
-0
+        return self.dispatcher(stacked_attention), pq_shape
