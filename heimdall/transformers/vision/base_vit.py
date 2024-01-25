@@ -22,7 +22,7 @@ class BaseViTFeature(torch.nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.patch_embedder(x)
+        x = self.patch_embedder.forward(x, extract_pre_flat_shape=False)
         return self.encoder(x)
 
     def compute_classification_logits(self, x: torch.Tensor) -> torch.Tensor:

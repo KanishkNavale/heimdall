@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import torch
 
 from heimdall.embeddings.position_embedder import PositionalEmbedder1D
@@ -17,14 +19,11 @@ class PatchEmbedder(torch.nn.Module):
         self.channel_last = channel_last
         self.add_cls_token = add_cls_token
 
-        self.patch_maker = torch.nn.Sequential(
-            torch.nn.Conv2d(
-                in_channels=in_channels,
-                out_channels=out_channels,
-                kernel_size=patch_size,
-                stride=patch_size,
-            ),
-            torch.nn.Flatten(2, 3),
+        self.patcher = torch.nn.Conv2d(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=patch_size,
+            stride=patch_size,
         )
 
         self.position_embedder = PositionalEmbedder1D(d_model=out_channels)
@@ -32,8 +31,13 @@ class PatchEmbedder(torch.nn.Module):
         if self.add_cls_token:
             self.class_token = torch.nn.Parameter(torch.randn(1, 1, out_channels))
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.patch_maker(x).transpose(1, 2)
+    def forward(
+        self, x: torch.Tensor, extract_pre_flat_shape: bool = False
+    ) -> torch.Tensor | Tuple[torch.Tensor, Tuple[int, int]]:
+        x = self.patcher(x)
+        hw_shape = (x.shape[-2], x.shape[-1])
+
+        x = x.flatten(2).transpose(1, 2)
 
         if self.add_cls_token:
             cls_token = self.class_token.expand(x.shape[0], -1, -1)
@@ -42,8 +46,10 @@ class PatchEmbedder(torch.nn.Module):
         pos_embeddings = self.position_embedder(x)
         pos_cls_embeddings = x + pos_embeddings
 
-        if self.channel_last:
-            return pos_cls_embeddings
+        if not self.channel_last:
+            pos_cls_embeddings = pos_cls_embeddings.transpose(1, 2)
 
+        if extract_pre_flat_shape:
+            return pos_cls_embeddings, hw_shape
         else:
-            return pos_cls_embeddings.transpose(1, 2)
+            return pos_cls_embeddings
