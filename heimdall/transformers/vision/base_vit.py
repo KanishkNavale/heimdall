@@ -16,9 +16,7 @@ class BaseViTFeature(torch.nn.Module):
     ) -> None:
         super(BaseViTFeature, self).__init__()
 
-        self.patch_embedder = PatchEmbedder(
-            in_channels, out_channels, patch_size, flat_dispatch=True
-        )
+        self.patch_embedder = PatchEmbedder(in_channels, out_channels, patch_size)
         self.encoder = Encoder(
             out_channels, encoder_head_size, n_attention_heads, n_encoder_layers
         )

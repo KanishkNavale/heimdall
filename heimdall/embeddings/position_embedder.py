@@ -9,10 +9,8 @@ def sine_embed(x: torch.Tensor) -> torch.Tensor:
 
 
 class PositionalEmbedder1D(torch.nn.Module):
-    def __init__(self, d_model: int, max_len: int = 100):
+    def __init__(self, d_model: int):
         super(PositionalEmbedder1D, self).__init__()
-
-        self.max_len = max_len
 
         self.normalizer = torch.exp(
             torch.arange(0, d_model, 2) * (-math.log(1e4) / d_model)
@@ -30,11 +28,6 @@ class PositionalEmbedder1D(torch.nn.Module):
 
         if self.cached_embedding is not None and self.cached_embedding.shape == x.shape:
             return self.cached_embedding
-
-        if L > self.max_len:
-            raise ValueError(
-                f"Input sequence length ({x.size(1)}) is longer than the max.length ({self.max_len}) of positional embedding"
-            )
 
         if x.size(-1) != D:
             raise ValueError(
