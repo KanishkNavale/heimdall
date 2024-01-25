@@ -19,7 +19,7 @@ class PatchEmbedder(torch.nn.Module):
         self.channel_last = channel_last
         self.add_cls_token = add_cls_token
 
-        self.patcher = torch.nn.Conv2d(
+        self.patcher = torch.nn.Conv3d(
             in_channels=in_channels,
             out_channels=out_channels,
             kernel_size=patch_size,
