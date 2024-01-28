@@ -19,7 +19,7 @@ class PatchEmbedder(torch.nn.Module):
         self.channel_last = channel_last
         self.add_cls_token = add_cls_token
 
-        self.patcher = torch.nn.Conv3d(
+        self.patcher = torch.nn.Conv2d(
             in_channels=in_channels,
             out_channels=out_channels,
             kernel_size=patch_size,
@@ -51,5 +51,67 @@ class PatchEmbedder(torch.nn.Module):
 
         if extract_pre_flat_shape:
             return pos_cls_embeddings, hw_shape
+        else:
+            return pos_cls_embeddings
+
+
+class TemporalPatchEmbedder(torch.nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        patch_size: int = 2,
+        temporal_size: int = 1,
+        add_cls_token: bool = True,
+        channel_last: bool = True,
+    ):
+        super().__init__()
+
+        self.channel_last = channel_last
+        self.add_cls_token = add_cls_token
+
+        self.patcher = torch.nn.Conv3d(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=(temporal_size, patch_size, patch_size),
+            stride=(temporal_size, patch_size, patch_size),
+        )
+
+        self.position_embedder = PositionalEmbedder1D(d_model=out_channels)
+
+        if self.add_cls_token:
+            self.class_token = torch.nn.Parameter(torch.randn(1, 1, out_channels))
+
+    def forward(
+        self, x: torch.Tensor, extract_pre_flat_shape: bool = False
+    ) -> torch.Tensor | Tuple[torch.Tensor, Tuple[int, int]]:
+        if x.ndim < 3:
+            raise ValueError(
+                f"Expected x to have atleast 3 dimensions, got {x.ndim} instead"
+            )
+
+        # Add a temporal dimension: X[B, L, C] -> X[B, 1, L, C]
+        if x.ndim == 3:
+            x = x.unsqueeze(1)
+
+        # Generate patch embeddings: X[B, C, T, H, W] -> X[B, C, t, h, w], where t << T, h << H, w << W
+        x = self.patcher(x)
+        thw_shape = (x.shape[-1], x.shape[-2], x.shape[-1])
+
+        # Flatten: X[B, C, t, h, w] -> X[B, C, t * h * w]
+        x = x.flatten(2).transpose(1, 2)
+
+        if self.add_cls_token:
+            cls_token = self.class_token.expand(x.shape[0], -1, -1)
+            x = torch.cat([cls_token, x], dim=1)
+
+        pos_embeddings = self.position_embedder(x)
+        pos_cls_embeddings = x + pos_embeddings
+
+        if not self.channel_last:
+            pos_cls_embeddings = pos_cls_embeddings.transpose(1, 2)
+
+        if extract_pre_flat_shape:
+            return pos_cls_embeddings, thw_shape
         else:
             return pos_cls_embeddings

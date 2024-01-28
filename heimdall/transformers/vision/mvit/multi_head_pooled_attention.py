@@ -179,3 +179,10 @@ class MultiHeadPooledSelfAttention(torch.nn.Module):
 
         # Project: [B, l, N * h] -> [B, l, D]
         return self.dispatcher(stacked_attention), pq_shape
+
+
+if __name__ == "__main__":
+    x = torch.randn(2, 4, 3, 256, 256)
+    pooler = torch.nn.Conv3d(4, 16, kernel_size=(1, 4, 4), stride=(1, 4, 4), padding=0)
+    y = pooler.forward(x)
+    print(y.shape)
