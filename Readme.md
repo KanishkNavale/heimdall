@@ -17,11 +17,11 @@ Bound to a long term development. Below is the list of present contents:
   - Dataloader
 
 - Transformers:
-  - Position N-dimensional & Image patch embedder
-  - Fast multi-head attention module
-  - Encoder blocks
-  - ViT
-  - MViT
+  - (1,2,3)D-Rotatory position embeddings
+  - Temporal-Image patch embedder
+  - Fast multi-head pooling attention module (MHA / MHPA)
+  - For Vision: ViT, MViT-v2 (auto-adaptable)
+  - For Video : MViT-v2
 
 - Visual object generalization:
   - Dense Object Nets (DON)
