@@ -34,9 +34,19 @@ class PatchEmbedder(torch.nn.Module):
     def forward(
         self, x: torch.Tensor, extract_pre_flat_shape: bool = False
     ) -> torch.Tensor | Tuple[torch.Tensor, Tuple[int, int]]:
+        if x.ndim < 2:
+            raise ValueError(
+                f"Expected x to have atleast 2 dimensions, got {x.ndim} instead"
+            )
+
+        # Add a channel dimension: X[B, H, W] -> X[B, 1, H, W]
+        if x.ndim == 2:
+            x = x.unsqueeze(1)
+
         x = self.patcher(x)
         hw_shape = (x.shape[-2], x.shape[-1])
 
+        # Flatten: X[B, C, H, W] -> X[B, C, h * w], where h << H, w << W
         x = x.flatten(2).transpose(1, 2)
 
         if self.add_cls_token:
@@ -60,7 +70,7 @@ class TemporalPatchEmbedder(torch.nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        patch_size: int = 2,
+        patch_size: int = 4,
         temporal_size: int = 1,
         add_cls_token: bool = True,
         channel_last: bool = True,
@@ -96,7 +106,7 @@ class TemporalPatchEmbedder(torch.nn.Module):
 
         # Generate patch embeddings: X[B, C, T, H, W] -> X[B, C, t, h, w], where t << T, h << H, w << W
         x = self.patcher(x)
-        thw_shape = (x.shape[-1], x.shape[-2], x.shape[-1])
+        thw_shape = (x.shape[-3], x.shape[-2], x.shape[-1])
 
         # Flatten: X[B, C, t, h, w] -> X[B, C, t * h * w]
         x = x.flatten(2).transpose(1, 2)

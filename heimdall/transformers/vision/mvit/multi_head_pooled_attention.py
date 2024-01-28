@@ -2,7 +2,13 @@ from typing import Optional, Tuple
 
 import torch
 
-from heimdall.embeddings.position_embedder import PositionalEmbedder2D
+from heimdall.embeddings.position_embedder import PositionalEmbedder3D
+
+
+def _condition_hw_to_thw_shape(
+    thw_shape: Tuple[int, int] | Tuple[int, int, int],
+) -> Tuple[int, int, int]:
+    return (1, *thw_shape) if len(thw_shape) == 2 else thw_shape
 
 
 class AttentionPooler(torch.nn.Module):
@@ -10,54 +16,54 @@ class AttentionPooler(torch.nn.Module):
         self,
         in_channels: int,
         out_channels: Optional[int] = None,
-        kernel_size: int = 1,
-        stride: int = 1,
-        padding: int = 0,
+        patch_size: int = 2,
+        temporal_stride: int = 1,
         has_cls_token: bool = True,
+        bias: bool = False,
     ) -> None:
         super().__init__()
 
         if out_channels is None:
-            out_channels = in_channels
+            out_channels = in_channels * 2  # MViT's default scaling factor
 
-        self.pooler = torch.nn.Conv2d(
+        self.pooler = torch.nn.Conv3d(
             in_channels,
             out_channels,
-            kernel_size=kernel_size,
-            stride=stride,
-            padding=padding,
+            kernel_size=(temporal_stride, patch_size, patch_size),
+            stride=(temporal_stride, patch_size, patch_size),
+            bias=bias,
         )
+
         self.has_cls_token = has_cls_token
 
     def forward(
-        self, x: torch.Tensor, hw_shape: Tuple[int, int]
+        self, x: torch.Tensor, thw_shape: Tuple[int, int] | Tuple[int, int, int]
     ) -> Tuple[torch.Tensor, Tuple[int, int]]:
         # Check shapes
-        H, W = hw_shape
-        B, N, _, C = x.shape
+
+        T, H, W = _condition_hw_to_thw_shape(thw_shape)
+
+        # B: Batch Size, N: No. of Heads, L: Sequence Length, D: Embedding Dim.
+        B, N, _, D = x.shape
 
         if self.has_cls_token:
             cls_tokens = x[:, :, 0, :].unsqueeze(2)
             x = x[:, :, 1:, :]
 
-        # Reshape: X[B, N, L, C] -> X[B * N, C, H, W]
-        x = x.transpose(1, 2).reshape(B * N, C, H, W)
+        # Reshape: X[B, N, L, D] -> X[B * N, D, T, H, W]
+        x = x.transpose(1, 2).reshape(B * N, D, T, H, W)
 
-        # Pooler: X[B * N, C, H, W] -> X[B * N, D, h, w], where h << H, w << W, C <= D
+        # Pooler: X[B * N, D, T, H, W] -> X[B * N, D, t, h, w], where h << H, w << W, , t<<T, C <= D
         pooled_features = self.pooler.forward(x)
-        hw_shape = (pooled_features.shape[-2], pooled_features.shape[-1])
+        pooled_thw_shape = pooled_features.shape[-3:]
 
-        # Reshape: X[B * N, D, h, w] -> X[B, N, D, h, w]
+        # Reshape: X[B * N, D, t, h, w] -> X[B, N, D, t, h, w]
         reshaped_pooled_features = pooled_features.reshape(
-            B,
-            N,
-            pooled_features.shape[1],
-            pooled_features.shape[2],
-            pooled_features.shape[3],
+            B, N, pooled_features.shape[1], *pooled_thw_shape
         )
 
-        # Flatten: X[B, N, D, h, w] -> X[B, N, h * w, D]
-        flattened_pooled_features = reshaped_pooled_features.flatten(-2).transpose(
+        # Flatten: X[B, N, D, t, h, w] -> X[B, N, t * h * w, D]
+        flattened_pooled_features = reshaped_pooled_features.flatten(3).transpose(
             -2, -1
         )
 
@@ -67,7 +73,7 @@ class AttentionPooler(torch.nn.Module):
                 [cls_tokens, flattened_pooled_features], dim=2
             )
 
-        return flattened_pooled_features, hw_shape
+        return flattened_pooled_features, pooled_thw_shape
 
 
 class MultiHeadPooledSelfAttention(torch.nn.Module):
@@ -92,11 +98,17 @@ class MultiHeadPooledSelfAttention(torch.nn.Module):
         self.PQ = AttentionPooler(input_dim, head_dim, has_cls_token=has_cls_token)
         self.PK = AttentionPooler(input_dim, head_dim, has_cls_token=has_cls_token)
         self.PV = AttentionPooler(input_dim, head_dim, has_cls_token=has_cls_token)
+        self.PX = AttentionPooler(input_dim, head_dim, has_cls_token=has_cls_token)
+
+        self.input_layer_norm = torch.nn.LayerNorm(input_dim)
+        self.output_layer_norm = torch.nn.LayerNorm(input_dim)
 
         # Rotary Embeddings instrad of Positional Embeddings
-        self.relative_pos_embedder = PositionalEmbedder2D(head_dim)
+        self.relative_pos_embedder = PositionalEmbedder3D(head_dim)
 
         self.dispatcher = torch.nn.Linear(head_dim * n_head, input_dim)
+
+        self.attention_scale = head_dim**-0.5
 
         # Initialize heads
         self._init_weights()
@@ -112,77 +124,80 @@ class MultiHeadPooledSelfAttention(torch.nn.Module):
         torch.nn.init.zeros_(self.K.bias)
         torch.nn.init.zeros_(self.V.bias)
 
-    def _add_relative_pos_encoding(
+    def _add_relative_pos_attention(
         self,
-        k: torch.Tensor,
-        hw_shape: Tuple[int, int],
+        attention_logits: torch.Tensor,
+        Q: torch.Tensor,
+        thw_shape: Tuple[int, int],
     ) -> torch.Tensor:
-        B, N, L, C = k.shape
-        h, w = hw_shape
+        T, H, W = _condition_hw_to_thw_shape(thw_shape)
+        B, N, _, D = Q.shape
 
-        if self.has_cls_token:
-            cls_tokens = k[:, :, 0, :].unsqueeze(2)
-            k = k[:, :, 1:, :]
+        cls_index = 1 if self.has_cls_token else 0
 
-        # Reshape: X[B, N, L, C] -> X[B * N, h, w, C]
-        k = k.reshape(B * N, h, w, C)
+        # Reshape: X[B, N, L, D] -> X[B*N, T, H, W, D]
+        q = Q[:, :, cls_index:].reshape(B * N, T, H, W, D)
 
-        embeddings = self.relative_pos_embedder(k)
-        k = k + embeddings
+        # Compute relative positional embeddings
+        embeddings = self.relative_pos_embedder(q)
 
-        # Reshape: X[B * N, h, w, C] -> X[B, N, L, C]
-        k = k.reshape(B, N, L - 1, C)
+        qr = torch.matmul(
+            q.reshape(B * N, T * H * W, D),
+            embeddings.reshape(B * N, T * H * W, D).transpose(-2, -1),
+        )
 
-        if self.has_cls_token:
-            embeddings = torch.concat([cls_tokens, k], dim=-2)
-
-        return embeddings
+        # Reshape: X[B * N, T, H, W] -> X[B, N, T*H*W]
+        attention_logits[:, :, cls_index:, cls_index:] += qr.reshape(
+            B, N, T * H * W, T * H * W
+        )
+        return attention_logits
 
     def forward(
-        self, x: torch.Tensor, hw_shape: Tuple[int, int]
+        self, x: torch.Tensor, thw_shape: Tuple[int, int] | Tuple[int, int, int]
     ) -> Tuple[torch.Tensor, Tuple[int, int]]:
         B, L, _ = x.size()
+        thw_shape = _condition_hw_to_thw_shape(thw_shape)
 
-        # X[B: Batch Size, L: Sequence Length, D: Embedding Dim.] -> Q|K|V[B, L, N: No. of Heads * H:]
+        # Input Layer Norm: X[B, L, D] -> X[B, L, D]
+        x = self.input_layer_norm(x)
+
+        # X[B: Batch Size, L: Sequence Length, D: Embedding Dim.] -> Q|K|V[B, L, N: No. of Heads * D]
         Q = self.Q(x)
         K = self.K(x)
         V = self.V(x)
 
-        # Q|K|V[B, L, N * H] -> Q|K|V[B, N, L, H]
+        # Q|K|V[B, L, N * D] -> Q|K|V[B, N, L, D]
         Q = Q.view(B, L, self.n_head, self.head_dim).transpose(1, 2)
         K = K.view(B, L, self.n_head, self.head_dim).transpose(1, 2)
         V = V.view(B, L, self.n_head, self.head_dim).transpose(1, 2)
 
-        # Pooled Features: Q|K|V[B, N, L, H] -> Pooled Features[B, N, l, h], where l <= L, h <= H
-        PQ, pq_shape = self.PQ.forward(Q, hw_shape)
-        PK, _ = self.PK.forward(K, hw_shape)
-        PV, _ = self.PV.forward(V, hw_shape)
+        # Pooled Features: Q|K|V[B, N, L, D] -> Pooled Features[B, N, l, h], where l <= L, d <= D
+        PQ, pq_shape = self.PQ.forward(Q, thw_shape)
+        PK, _ = self.PK.forward(K, thw_shape)
+        PV, _ = self.PV.forward(V, thw_shape)
 
-        # Add Relative Positional Embeddings
-        PQ = self._add_relative_pos_encoding(PQ, pq_shape)
-
-        # Compute Attention: PQ|PK|PV[B, N, l, h] -> Attention[B, N, l, h]
-        attention_logits = torch.matmul(PQ, PK.transpose(-2, -1)) / (self.head_dim**0.5)
-        attention = torch.nn.functional.softmax(attention_logits, dim=-1)
-        self_attention = torch.matmul(attention, PV)
+        # Compute Attention: PQ|PK|PV[B, N, l, d] -> Attention[B, N, l, d]
+        attention_logits = torch.matmul(PQ, PK.transpose(-2, -1))
+        scaled_attention_logits = attention_logits * self.attention_scale
+        relative_attention_logits = self._add_relative_pos_attention(
+            scaled_attention_logits, PQ, pq_shape
+        )
+        attention = torch.nn.functional.softmax(relative_attention_logits, dim=-1)
+        residual_self_attention = torch.matmul(attention, PV) + PQ
 
         if self.has_cls_token:
-            self_attention[:, :, 1:, :] += Q[:, :, 1:, :]
-            skipped_attention = self_attention
+            residual_self_attention[:, :, 1:, :] += PQ[:, :, 1:, :]
+            skipped_attention = residual_self_attention
         else:
-            skipped_attention = self_attention + Q
+            skipped_attention = residual_self_attention + PQ
 
-        # Concatenate heads: [B, N, l, h] -> [B, l, N * h]
-        stacked_attention = (
-            skipped_attention.transpose(2, 1).contiguous().view(B, L, -1)
-        )
+        # Concatenate heads: [B, N, l, d] -> [B, l, N * d]
+        stacked_attention = skipped_attention.transpose(1, 2).contiguous().flatten(2)
 
-        # Project: [B, l, N * h] -> [B, l, D]
-        return self.dispatcher(stacked_attention), pq_shape
+        # Compute Pooled Input: X[B, L, D] -> [B, l, d]
+        PX, _ = self.PX.forward(x.unsqueeze(dim=1), thw_shape)
+        PX = PX.squeeze(dim=1)
 
-
-if __name__ == "__main__":
-    x = torch.randn(2, 4, 3, 256, 256)
-    pooler = torch.nn.Conv3d(4, 16, kernel_size=(1, 4, 4), stride=(1, 4, 4), padding=0)
-    y = pooler.forward(x)
-    print(y.shape)
+        # Project: [B, l, N * d] -> [B, l, D]
+        skipped_projected_features = self.dispatcher(stacked_attention) + PX
+        return self.output_layer_norm(skipped_projected_features), pq_shape
