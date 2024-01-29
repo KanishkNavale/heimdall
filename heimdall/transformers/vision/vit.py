@@ -10,7 +10,6 @@ class BaseViTFeature(torch.nn.Module):
         in_channels: int,
         out_channels: int,
         patch_size: int,
-        encoder_head_size: int,
         n_attention_heads: int,
         n_encoder_layers: int,
     ) -> None:
@@ -18,7 +17,7 @@ class BaseViTFeature(torch.nn.Module):
 
         self.patch_embedder = PatchEmbedder(in_channels, out_channels, patch_size)
         self.encoder = Encoder(
-            out_channels, encoder_head_size, n_attention_heads, n_encoder_layers
+            out_channels, out_channels, n_attention_heads, n_encoder_layers
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -36,7 +35,6 @@ class MViTFeature(torch.nn.Module):
         out_channels: int,
         patch_size: int,
         temporal_size: int,
-        encoder_head_size: int,
         n_attention_heads: int,
         n_encoder_layers: int,
     ) -> None:
@@ -46,7 +44,7 @@ class MViTFeature(torch.nn.Module):
             in_channels, out_channels, patch_size, temporal_size
         )
         self.encoder = Encoder(
-            out_channels, encoder_head_size, n_attention_heads, n_encoder_layers
+            out_channels, out_channels, n_attention_heads, n_encoder_layers
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
