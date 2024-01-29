@@ -1,5 +1,6 @@
 import torch
 
+from heimdall.transformers.multi_head_pooled_attention import MultiHeadPooledAttention
 from heimdall.transformers.multihead_attention import MultiHeadAttention
 
 
@@ -52,6 +53,21 @@ class EncoderLayer(torch.nn.Module):
         return x
 
 
+class MultiScaleEncoderLayer(torch.nn.Module):
+    def __init__(self, input_dim: int, head_dim: int, n_heads: int) -> None:
+        super(MultiScaleEncoderLayer, self).__init__()
+
+        self.ln1 = LayerNorm(input_dim)
+        self.ln2 = LayerNorm(input_dim)
+        self.attn = MultiHeadPooledAttention(input_dim, head_dim, n_heads)
+        self.mlp = MLP(input_dim)
+
+    def forward(self, x):
+        x = x + self.attn(self.ln1(x))
+        x = x + self.mlp(self.ln2(x))
+        return x
+
+
 class Encoder(torch.nn.Module):
     def __init__(
         self, input_dim: int, head_dim: int, n_attention_head: int, n_layers: int
@@ -61,6 +77,25 @@ class Encoder(torch.nn.Module):
         self.layers = torch.nn.ModuleList(
             [
                 EncoderLayer(input_dim, head_dim, n_attention_head)
+                for _ in range(n_layers)
+            ]
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        for layer in self.layers:
+            x = layer(x)
+        return x
+
+
+class MultiScaleEncoder(torch.nn.Module):
+    def __init__(
+        self, input_dim: int, head_dim: int, n_attention_head: int, n_layers: int
+    ) -> None:
+        super(MultiScaleEncoder, self).__init__()
+
+        self.layers = torch.nn.ModuleList(
+            [
+                MultiScaleEncoderLayer(input_dim, head_dim, n_attention_head)
                 for _ in range(n_layers)
             ]
         )

@@ -7,8 +7,8 @@ class DepthCompletionLoss:
         self.name = "sereact depth completion loss"
 
         # Init. configuration
-        config_dictionary = initialize_config_file(yaml_config_path)
-        self.config = DepthCompletionMLPConfig.from_dictionary(config_dictionary)
+        # config_dictionary = initialize_config_file(yaml_config_path)
+        # self.config = DepthCompletionMLPConfig.from_dictionary(config_dictionary)
 
         # deconstruct
         self.reduction = self.config.loss.reduction

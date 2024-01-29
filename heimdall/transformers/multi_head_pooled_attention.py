@@ -76,7 +76,7 @@ class AttentionPooler(torch.nn.Module):
         return flattened_pooled_features, pooled_thw_shape
 
 
-class MultiHeadPooledSelfAttention(torch.nn.Module):
+class MultiHeadPooledAttention(torch.nn.Module):
     def __init__(
         self,
         input_dim: int,
@@ -100,7 +100,6 @@ class MultiHeadPooledSelfAttention(torch.nn.Module):
         self.PV = AttentionPooler(input_dim, head_dim, has_cls_token=has_cls_token)
         self.PX = AttentionPooler(input_dim, head_dim, has_cls_token=has_cls_token)
 
-        self.input_layer_norm = torch.nn.LayerNorm(input_dim)
         self.output_layer_norm = torch.nn.LayerNorm(input_dim)
 
         # Rotary Embeddings instrad of Positional Embeddings
@@ -157,9 +156,6 @@ class MultiHeadPooledSelfAttention(torch.nn.Module):
     ) -> Tuple[torch.Tensor, Tuple[int, int]]:
         B, L, _ = x.size()
         thw_shape = _condition_hw_to_thw_shape(thw_shape)
-
-        # Input Layer Norm: X[B, L, D] -> X[B, L, D]
-        x = self.input_layer_norm(x)
 
         # X[B: Batch Size, L: Sequence Length, D: Embedding Dim.] -> Q|K|V[B, L, N: No. of Heads * D]
         Q = self.Q(x)

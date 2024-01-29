@@ -4,3 +4,6 @@
 *.egg-info
 *.log
 *.egg-info
+.coverage
+.tox
+.pytest_cache

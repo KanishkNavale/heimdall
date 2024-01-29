@@ -5,7 +5,7 @@ from kornia.geometry.linalg import relative_transformation
 
 
 class KeypointNetLosses:
-    def __init__(self, loss_config: Loss) -> None:
+    def __init__(self, loss_config) -> None:
         self.name = "Keypoint Network Losses"
 
         # Init. configuration
