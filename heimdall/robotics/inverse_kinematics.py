@@ -55,7 +55,7 @@ def compute_stable_inverse_jacobian(
 def compute_planar_trajectory(
     intial_joint_position: np.ndarray | torch.Tensor,
     target_tcp_position: np.ndarray | torch.Tensor,
-    jacobian_fucntion: callable,
+    jacobian_function: callable,
     forward_kinematics_function: callable,
     interpolation: str = "linear",
     max_iterations: int = 100,
@@ -78,7 +78,7 @@ def compute_planar_trajectory(
 
     for i in range(1, max_iterations + 1):
         q_current = joint_trajectory[-1]
-        jacobian = jacobian_fucntion(q_current)
+        jacobian = jacobian_function(q_current)
         y_current = forward_kinematics_function(q_current)
 
         if interpolation == "linear":
@@ -93,10 +93,7 @@ def compute_planar_trajectory(
         jacobian_inverse = compute_stable_inverse_jacobian(jacobian)
         q_next = q_current + smooth_factor * jacobian_inverse @ (y_next - y_current)
 
-        with torch.no_grad():
-            joint_trajectory.append(
-                q_next.cpu().next() if kwargs.get("numpy_found") else q_next
-            )
+        joint_trajectory.append(q_next)
 
         if torch.allclose(y_next, y_current, atol=1e-4):
             break
@@ -104,6 +101,10 @@ def compute_planar_trajectory(
     if logging:
         y_current = forward_kinematics_function(joint_trajectory[-1])
         error = torch.linalg.norm(y_target - y_current)
-        logger.info(f"Trajectory generation completed with error: {error:.4f}")
+        logger.info(f"Planar trajectory generation completed with error: {error:.4f}")
+
+    if kwargs.get("numpy_found"):
+        with torch.no_grad():
+            return [joint.cpu().numpy() for joint in joint_trajectory]
 
     return joint_trajectory
