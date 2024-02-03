@@ -4,7 +4,7 @@ import numpy as np
 import torch
 
 from heimdall.logger import OverWatch
-from heimdall.utils import convert_numpy_to_tensor, timeit
+from heimdall.utils import convert_numpy_to_tensor
 
 logger = OverWatch("inverse_kinematics")
 
@@ -25,14 +25,11 @@ def compute_stable_inverse_jacobian(
     transpose_jacobian = torch.transpose(jacobian, 0, 1)
     inverted_c = torch.eye(jacobian.shape[1]) * (1.0 / C)
 
-    with timeit(
-        title="Computing stable inverse jacobian", logger=logger
-    ) if logging else None:
-        pseudo_inverse_jacobian = (
-            inverse_w
-            @ transpose_jacobian
-            @ torch.linalg.inv(jacobian @ inverse_w @ transpose_jacobian + inverted_c)
-        )
+    pseudo_inverse_jacobian = (
+        inverse_w
+        @ transpose_jacobian
+        @ torch.linalg.inv(jacobian @ inverse_w @ transpose_jacobian + inverted_c)
+    )
 
     if logging:
         determinant = torch.linalg.det(jacobian @ pseudo_inverse_jacobian)
