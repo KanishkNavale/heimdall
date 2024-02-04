@@ -9,6 +9,9 @@ from heimdall.abstracts.dataschemes import BaseDataClass
 class SO3(BaseDataClass):
     matrix: torch.Tensor
 
+    def __init__(self, matrix: torch.Tensor) -> None:
+        super().__init__(matrix=matrix)
+
     def __post_init__(self, *kwargs) -> None:
         if self.matrix.ndim > 3 or self.matrix.ndim < 2:
             raise ValueError("SO3 matrix must be of shape (3, 3) or (N, 3, 3))")
@@ -51,6 +54,9 @@ class SO3(BaseDataClass):
 class Pose(BaseDataClass):
     translation: torch.Tensor
     SO3: SO3
+
+    def __init__(self, translation: torch.Tensor, SO3: SO3) -> None:
+        super().__init__(translation=translation, SO3=SO3)
 
     def __post_init__(self, *kwargs) -> None:
         if self.translation.ndim > 2 or self.translation.ndim < 1:

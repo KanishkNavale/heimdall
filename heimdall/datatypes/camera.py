@@ -10,6 +10,9 @@ class CameraIntrinsics(BaseDataClass):
     cx: float
     cy: float
 
+    def __init__(self, fx: float, fy: float, cx: float, cy: float) -> None:
+        super().__init__(fx=fx, fy=fy, cx=cx, cy=cy)
+
     @property
     def matrix(self) -> np.ndarray:
         return np.array([self.fx, self.fy, self.cx, self.cy])
@@ -18,3 +21,6 @@ class CameraIntrinsics(BaseDataClass):
 class CameraInformation(BaseDataClass):
     intrinsics: CameraIntrinsics
     pose: Pose
+
+    def __init__(self, intrinsics: CameraIntrinsics, pose: Pose) -> None:
+        super().__init__(intrinsics=intrinsics, pose=pose)
