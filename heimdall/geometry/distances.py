@@ -3,7 +3,9 @@ import torch
 from heimdall.datatypes.pose import SO3, Pose
 
 
-def rotational_geodesic_distance(source: SO3, target: SO3) -> torch.Tensor:
+def rotational_geodesic_distance(
+    source: SO3, target: SO3, eps: float = 1e-6
+) -> torch.Tensor:
     if source.matrix.ndim != target.matrix.ndim:
         raise ValueError(
             "Source and target SO3 matrices must have the same number of dimensions."
@@ -12,8 +14,7 @@ def rotational_geodesic_distance(source: SO3, target: SO3) -> torch.Tensor:
     relative_rotation = source.matrix @ target.matrix.transpose(-2, -1)
 
     trace = torch.sum(torch.diagonal(relative_rotation, dim1=-2, dim2=-1), dim=-1)
-    cos_theta = (trace - 1.0) * 0.5
-    cos_theta = torch.clip(cos_theta, -1.0, 1.0)
+    cos_theta = torch.clip((trace - 1.0) * 0.5, -1.0 + eps, 1.0 - eps)
     return torch.acos(cos_theta)
 
 

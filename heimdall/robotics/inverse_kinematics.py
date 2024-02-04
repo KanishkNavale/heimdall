@@ -3,6 +3,9 @@ from typing import List, Optional
 import numpy as np
 import torch
 
+from heimdall.datatypes.pose import Pose
+from heimdall.geometry.distances import pose_geodesic_distance
+from heimdall.geometry.transformations import relative_pose
 from heimdall.logger import OverWatch
 from heimdall.utils import convert_numpy_to_tensor
 
@@ -54,7 +57,7 @@ def compute_stable_inverse_jacobian(
 @convert_numpy_to_tensor
 def compute_planar_trajectory(
     intial_joint_position: np.ndarray | torch.Tensor,
-    target_tcp_position: np.ndarray | torch.Tensor,
+    target_tcp_position: Pose,
     jacobian_function: callable,
     forward_kinematics_function: callable,
     interpolation: str = "linear",
@@ -102,6 +105,47 @@ def compute_planar_trajectory(
         y_current = forward_kinematics_function(joint_trajectory[-1])
         error = torch.linalg.norm(y_target - y_current)
         logger.info(f"Planar trajectory generation completed with error: {error:.4f}")
+
+    if kwargs.get("numpy_found"):
+        with torch.no_grad():
+            return [joint.cpu().numpy() for joint in joint_trajectory]
+
+    return joint_trajectory
+
+
+@convert_numpy_to_tensor
+def compute_geodesic_trajectory(
+    intial_joint_position: np.ndarray | torch.Tensor,
+    target_tcp_pose: Pose,
+    jacobian_function: callable,
+    forward_kinematics_function: callable,
+    max_iterations: int = 100,
+    logging: bool = False,
+    **kwargs,
+) -> List[np.ndarray] | List[torch.Tensor]:
+    q_init = intial_joint_position
+    p_target = target_tcp_pose
+
+    joint_trajectory: List[np.ndarray] | List[torch.Tensor] = [q_init]
+
+    for _ in range(1, max_iterations + 1):
+        q_current = joint_trajectory[-1]
+        jacobian = jacobian_function(q_current)
+        p_current = forward_kinematics_function(q_current)
+
+        jacobian_inverse = compute_stable_inverse_jacobian(jacobian)
+        q_next = q_current + jacobian_inverse @ relative_pose(p_current, p_target)
+
+        joint_trajectory.append(q_next)
+
+        pose_distance = pose_geodesic_distance(p_target, p_current)
+        if torch.allclose(pose_distance, torch.zeros_like(pose_distance), atol=1e-4):
+            break
+
+    if logging:
+        p_current = forward_kinematics_function(joint_trajectory[-1])
+        error = pose_geodesic_distance(p_target, p_current)
+        logger.info(f"Geodesic trajectory generation completed with error: {error:.4f}")
 
     if kwargs.get("numpy_found"):
         with torch.no_grad():

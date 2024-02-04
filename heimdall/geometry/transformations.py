@@ -8,17 +8,18 @@ def relative_pose(source_pose: Pose, target_pose: Pose) -> Pose:
 
 
 def kabsch_transform(source: torch.Tensor, target: torch.Tensor) -> Pose:
-    if source.ndim != target.ndim:
-        raise ValueError(
-            "Source and target must have same number of dimensions. Preferably N x 3 or B x N x 3"
-        )
+    if source.shape[-1] != 3 or target.shape[-1] != 3 or source.ndim != target.ndim:
+        raise ValueError("Source and target must have shape (N, 3) or (B, N, 3)")
 
     if source.ndim == 2 and target.ndim == 2:
-        source = source[None, ...]
-        target = target[None, ...]
+        batched_source = source[None, ...]
+        batched_target = target[None, ...]
+    else:
+        batched_source = source
+        batched_target = target
 
-    centered_source = source - source.mean(dim=-2)
-    centered_target = target - target.mean(dim=-2)
+    centered_source = batched_source - batched_source.mean(dim=-2, keepdim=True)
+    centered_target = batched_target - batched_target.mean(dim=-2, keepdim=True)
 
     covariance_matrix = centered_source.transpose(-2, -1) @ centered_target
     U, _, VT = torch.linalg.svd(covariance_matrix)
@@ -29,6 +30,9 @@ def kabsch_transform(source: torch.Tensor, target: torch.Tensor) -> Pose:
     V[:, -1] *= sign[..., None]
 
     rotation_matrix = V @ UT
-    translation = target.mean(dim=-2) - source.mean(dim=-2)
+    translation = batched_target.mean(dim=-2) - batched_source.mean(dim=-2)
 
-    return Pose(translation=translation.squeeze(-1), SO3=SO3(rotation_matrix))
+    if source.ndim == 2 and target.ndim == 2:
+        return Pose(translation=translation[0], SO3=SO3(rotation_matrix[0]))
+
+    return Pose(translation=translation, SO3=SO3(rotation_matrix))
