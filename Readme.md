@@ -17,7 +17,7 @@ Bound to a long term development. Below is the list of present contents:
   - Dataloader
 
 - Transformers:
-  - (1,2,3)D-Rotatory position embeddings
+  - Upto 3D-Rotatory position embeddings
   - Temporal-Image patch embedder
   - Fast multi-head pooling attention module (MHA / MHPA)
   - For Vision: ViT, MViT-v2 (auto-adaptable)
@@ -27,5 +27,9 @@ Bound to a long term development. Below is the list of present contents:
   - Dense Object Nets (DON)
   - KeypointNet
 
-- Geometrical Manifold:
-  - SE3
+- Distances:
+  - SO3 & SE3 manifold distances
+
+- Robotics:
+  - Stable inverse jacobian
+  - Trajectory generation

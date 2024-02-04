@@ -72,7 +72,7 @@ def compute_planar_trajectory(
     y_target = target_tcp_position
     y_init = forward_kinematics_function(q_init)
 
-    smooth_factor = 1.0
+    smooth_factor = 1.0  # Also a learning rate if seen as a gradient descent task
 
     joint_trajectory: List[np.ndarray] | List[torch.Tensor] = [q_init]
 
