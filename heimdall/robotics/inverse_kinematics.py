@@ -133,12 +133,15 @@ def compute_geodesic_trajectory(
         jacobian = jacobian_function(q_current)
         p_current = forward_kinematics_function(q_current)
 
+        smooth_factor = pose_geodesic_distance(p_target, p_current)
         jacobian_inverse = compute_stable_inverse_jacobian(jacobian)
-        q_next = q_current + jacobian_inverse @ relative_pose(p_current, p_target)
+        q_next = q_current + smooth_factor * jacobian_inverse @ relative_pose(
+            p_current, p_target
+        )
 
         joint_trajectory.append(q_next)
 
-        pose_distance = pose_geodesic_distance(p_target, p_current)
+        pose_distance = smooth_factor
         if torch.allclose(pose_distance, torch.zeros_like(pose_distance), atol=1e-4):
             break
 
