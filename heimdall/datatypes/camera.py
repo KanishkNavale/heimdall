@@ -1,3 +1,5 @@
+from typing import Optional
+
 import numpy as np
 
 from heimdall.abstracts.dataschemes import BaseDataClass
@@ -20,7 +22,9 @@ class CameraIntrinsics(BaseDataClass):
 
 class CameraInformation(BaseDataClass):
     intrinsics: CameraIntrinsics
-    pose: Pose
+    pose: Optional[Pose] = None
 
-    def __init__(self, intrinsics: CameraIntrinsics, pose: Pose) -> None:
+    def __init__(
+        self, intrinsics: CameraIntrinsics, pose: Optional[Pose] = None
+    ) -> None:
         super().__init__(intrinsics=intrinsics, pose=pose)

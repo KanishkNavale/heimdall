@@ -73,10 +73,7 @@ class Pose(BaseDataClass):
 
     @property
     def inverted(self) -> "Pose":
-        return Pose(
-            translation=-torch.matmul(self.SO3.matrix, self.translation).squeeze(-1),
-            SO3=SO3(matrix=self.SO3.matrix.transpose(-1, -2)),
-        )
+        return Pose.from_SE3(kornia.geometry.inverse_transformation(self.SE3))
 
     @property
     def SE3(self) -> torch.Tensor:
