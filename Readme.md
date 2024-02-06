@@ -16,6 +16,16 @@ Bound to a long term development. Below is the list of present contents:
   - MLP
   - Dataloader
 
+- Distances:
+  - SO3 & SE3 manifold distances
+
+- Pointcloud:
+  - Furthest point sampling
+
+- Robotics:
+  - Stable inverse jacobian
+  - Planar & geodesic trajectory generation
+
 - Transformers:
   - Upto 3D-Rotatory position embeddings
   - Temporal-Image patch embedder
@@ -26,10 +36,3 @@ Bound to a long term development. Below is the list of present contents:
 - Visual object generalization:
   - Dense Object Nets (DON)
   - KeypointNet
-
-- Distances:
-  - SO3 & SE3 manifold distances
-
-- Robotics:
-  - Stable inverse jacobian
-  - Planar & geodesic trajectory generation
