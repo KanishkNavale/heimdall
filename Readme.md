@@ -32,4 +32,4 @@ Bound to a long term development. Below is the list of present contents:
 
 - Robotics:
   - Stable inverse jacobian
-  - Trajectory generation
+  - Planar & geodesic trajectory generation

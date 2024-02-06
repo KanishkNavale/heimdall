@@ -135,9 +135,8 @@ def compute_geodesic_trajectory(
 
         smooth_factor = pose_geodesic_distance(p_target, p_current)
         jacobian_inverse = compute_stable_inverse_jacobian(jacobian)
-        q_next = q_current + smooth_factor * jacobian_inverse @ relative_pose(
-            p_current, p_target
-        )
+        update = smooth_factor * jacobian_inverse @ relative_pose(p_current, p_target)
+        q_next = q_current + update
 
         joint_trajectory.append(q_next)
 
