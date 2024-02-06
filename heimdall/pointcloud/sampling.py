@@ -1,3 +1,5 @@
+from typing import List
+
 import torch
 
 from heimdall.utils import convert_numpy_to_tensor
@@ -70,10 +72,10 @@ def furthest_point_sampling(
 
 @convert_numpy_to_tensor
 def ball_query(
-    vector: torch.Tensor, pointcloud: torch.Tensor, radius: float = 0.01, **kwargs
-) -> torch.Tensor:
-    distances = torch.linalg.norm(pointcloud - vectors.unsqueeze(dim=0), dim=-1, ord=2)
+    vectors: torch.Tensor, pointcloud: torch.Tensor, radius: float = 0.01, **kwargs
+) -> List[torch.Tensor]:
+    distances = torch.linalg.norm(pointcloud - vectors.unsqueeze(dim=1), dim=-1, ord=2)
 
     sampling_mask = (distances <= radius) * (distances > 0.0)
 
-    return pointcloud[sampling_mask]
+    return [pointcloud[mask] for mask in sampling_mask]

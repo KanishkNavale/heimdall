@@ -21,6 +21,7 @@ Bound to a long term development. Below is the list of present contents:
 
 - Pointcloud:
   - Furthest point sampling
+  - Ball query
 
 - Robotics:
   - Stable inverse jacobian
