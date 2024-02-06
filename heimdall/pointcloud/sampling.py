@@ -66,3 +66,14 @@ def furthest_point_sampling(
         candidate_indices = candidate_indices[candidate_indices != selected]
 
     return pointcloud[sampled_indices]
+
+
+@convert_numpy_to_tensor
+def ball_query(
+    vector: torch.Tensor, pointcloud: torch.Tensor, radius: float = 0.01, **kwargs
+) -> torch.Tensor:
+    distances = torch.linalg.norm(pointcloud - vectors.unsqueeze(dim=0), dim=-1, ord=2)
+
+    sampling_mask = (distances <= radius) * (distances > 0.0)
+
+    return pointcloud[sampling_mask]
