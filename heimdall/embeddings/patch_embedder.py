@@ -95,14 +95,14 @@ class TemporalPatchEmbedder(torch.nn.Module):
     def forward(
         self, x: torch.Tensor, extract_pre_flat_shape: bool = False
     ) -> torch.Tensor | Tuple[torch.Tensor, Tuple[int, int]]:
-        if x.ndim < 3:
+        if x.ndim < 4:
             raise ValueError(
                 f"Expected x to have atleast 3 dimensions, got {x.ndim} instead"
             )
 
-        # Add a temporal dimension: X[B, L, C] -> X[B, 1, L, C]
-        if x.ndim == 3:
-            x = x.unsqueeze(1)
+        # Add a temporal dimension: X[B, C, H, W] -> X[B, C, 1, H, W]
+        if x.ndim == 4:
+            x = x.unsqueeze(2)
 
         # Generate patch embeddings: X[B, C, T, H, W] -> X[B, C, t, h, w], where t << T, h << H, w << W
         x = self.patcher(x)

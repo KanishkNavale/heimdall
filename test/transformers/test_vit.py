@@ -2,7 +2,7 @@ from unittest import TestCase
 
 import torch
 
-from heimdall.transformers.vision.vit import BaseViTFeature
+from heimdall.transformers.vision.vit import MViT, ViT
 
 
 class TestBaseViT(TestCase):
@@ -10,7 +10,7 @@ class TestBaseViT(TestCase):
         B, C, H, W, D = 2, 3, 224, 224, 768
         x = torch.randn(B, C, H, W)
 
-        model = BaseViTFeature(
+        model = ViT(
             in_channels=C,
             out_channels=768,
             patch_size=16,
@@ -28,7 +28,7 @@ class TestBaseViT(TestCase):
         B, C, H, W, D = 2, 3, 224, 224, 768
         x = torch.randn(B, C, H, W)
 
-        model = BaseViTFeature(
+        model = ViT(
             in_channels=C,
             out_channels=768,
             patch_size=16,
@@ -39,3 +39,22 @@ class TestBaseViT(TestCase):
         output = model.compute_classification_logits(x)
 
         self.assertEqual(output.shape, (B, D))
+
+
+class TestMViTS(TestCase):
+    def test_forward_pass(self) -> None:
+        B, C, T, H, W = 2, 3, 1, 224, 224
+        x = torch.randn(B, C, T, H, W)
+
+        model = MViT(
+            in_channels=C,
+            out_channels=128,
+            patch_size=4,
+            temporal_size=1,
+            n_heads=4,
+            block_config=[3, 7, 6],
+        )
+
+        feature = model.forward(x)
+
+        self.assertEqual(feature.shape, (B, 1, 128 * 64))

@@ -51,7 +51,7 @@ class AttentionPooler(torch.nn.Module):
             x = x[:, :, 1:, :]
 
         # Reshape: X[B, N, L, D] -> X[B * N, D, T, H, W]
-        x = x.transpose(1, 2).reshape(B * N, D, T, H, W)
+        x = x.transpose(-2, -1).reshape(B * N, D, T, H, W)
 
         # Pooler: X[B * N, D, T, H, W] -> X[B * N, D, t, h, w], where h << H, w << W, , t<<T, C <= D
         pooled_features = self.pooler.forward(x)
@@ -95,10 +95,10 @@ class MultiHeadPooledAttention(torch.nn.Module):
         self.K = torch.nn.Linear(input_dim, head_dim * n_head)
         self.V = torch.nn.Linear(input_dim, head_dim * n_head)
 
-        self.PQ = AttentionPooler(input_dim, head_dim, has_cls_token=has_cls_token)
-        self.PK = AttentionPooler(input_dim, head_dim, has_cls_token=has_cls_token)
-        self.PV = AttentionPooler(input_dim, head_dim, has_cls_token=has_cls_token)
-        self.PX = AttentionPooler(input_dim, head_dim, has_cls_token=has_cls_token)
+        self.PQ = AttentionPooler(head_dim, head_dim, has_cls_token=has_cls_token)
+        self.PK = AttentionPooler(head_dim, head_dim, has_cls_token=has_cls_token)
+        self.PV = AttentionPooler(head_dim, head_dim, has_cls_token=has_cls_token)
+        self.PX = AttentionPooler(input_dim, input_dim, has_cls_token=has_cls_token)
 
         self.output_layer_norm = torch.nn.LayerNorm(input_dim)
 
@@ -190,10 +190,10 @@ class MultiHeadPooledAttention(torch.nn.Module):
         # Concatenate heads: [B, N, l, d] -> [B, l, N * d]
         stacked_attention = skipped_attention.transpose(1, 2).contiguous().flatten(2)
 
-        # Compute Pooled Input: X[B, L, D] -> [B, l, d]
-        PX, _ = self.PX.forward(x.unsqueeze(dim=1), thw_shape)
-        PX = PX.squeeze(dim=1)
-
         # Project: [B, l, N * d] -> [B, l, D]
-        skipped_projected_features = self.dispatcher(stacked_attention) + PX
-        return self.output_layer_norm(skipped_projected_features), pq_shape
+        projected_features = self.dispatcher(stacked_attention)
+
+        PX, _ = self.PX.forward(x.unsqueeze(dim=1), thw_shape)
+        projected_features += PX.squeeze(dim=1)
+
+        return self.output_layer_norm(projected_features), pq_shape
